@@ -1,4 +1,5 @@
 from twilio.rest import Client
+from twilio.base.exceptions import TwilioRestException
 from tkinter import *
 from tkinter.messagebox import showinfo
 import xlrd
@@ -15,27 +16,29 @@ token_file.close()
 client = Client(sid, TOKEN)                                             # Creates Twilio client connection
 
 
-# Class to hold data for each person
-class Person:
+class Person:                                           # Class to hold data for each person
     def __init__(self, n, phone, email):
-        self.name = n                                   # Member name
-        self.phone = phone                              # Cell Number
-        self.email = email                              # Email Address
+        self.name = n                                       # Member name
+        self.phone = phone                                  # Cell Number
+        self.email = email                                  # Email Address
         self.status = BooleanVar()                          # Int to hold status
         self.status.set(False)
 
 
-# Main Application Class
-class Messenger(Frame):
+class Message:                                                          # Class representing messages to send
+    def __init__(self, text, targets):
+        self.msg = text                                                   # Stores text of message to be sent
+        self.targets = targets                                            # Array of people message will go to
+
+
+class Messenger(Frame):                                                 # Class representing the application
     def __init__(self, root):
         Frame.__init__(self, root)
         self.root = root                                                # Sets application root window
-        self.msg = ""                                                   # Inits message to empty
+        self.msg = ""
 
         self.intro = BooleanVar()
         self.intro.set(False)                                             # Inits intro boolean to False
-
-        self.sig = ""                                                   # Inits signature to empty
 
         self.texts = BooleanVar()
         self.texts.set(False)                                              # Inits text messages to false
@@ -57,44 +60,43 @@ class Messenger(Frame):
 
     # Sends message to Fraters
     def send_message(self):  # builds and sends messages
-        message = self.items[2][1].get()                            # Gets message from entry box
-        people = self.items[3][0] + self.items[3][1]                # Gets both people lists
-
-        sig = self.items[2][3].get()                                # Gets signature from entry box
-        if sig != "":                                          # if signature not empty, attach
-            message += "\n\n" + self.sig
+        m = Message(self.get_message_text(), self.get_targets())
 
         if self.texts.get():                                                # If sending a text
-            for p in people:                                          # loops through all people
+            for p in m.targets:                                          # loops through all targets
+                msgout = ""
                 if p.status.get():                                    # Person is on message roster
                     if self.intro.get():
-                        client.messages.create(to=p.phone, from_="14159095746",
-                                               body="Hey " + p.name + ",\n\n" + message)
+                        msgout = "Hey " + p.name + ",\n\n" + m.msg
                     else:
-                        client.messages.create(to=p.phone, from_="14159095746",
-                                               body=message)
+                        msgout = m.msg
+                    try:
+                        # print(msgout)
+                        client.messages.create(to=p.phone, from_="14159095746", body=msgout)
+                    except TwilioRestException:
+                        print("User " + p.name + " caused an error.")
 
+            # After sending all messages
             showinfo("Texts Sent", "Text broadcast completed successfully")
 
-        if self.emails.get():                     # if sending emails
+        if self.emails.get():                               # if sending emails
             user_email = "tkeupcry@gmail.com"               # sending emails from (Cryso Gmail account)
             pass_file = open("gmail_password.txt", "r")     # gets account password from file
             PW = pass_file.read()
             pass_file.close()
 
             msg = EmailMessage()                            # Creates email message
-            msg.set_content(message)                        # Sets content of email
+            msg.set_content(m.msg)                        # Sets content of email
             msg['Subject'] = "A message from TKE Upsilon Pi"
             msg['From'] = user_email
 
-            server = smtplib._SSL('smtp.gmail.com', 587)    # Connects to secure SMTP (email) server
+            server = smtplib.SSL('smtp.gmail.com', 587)    # Connects to secure SMTP (email) server
             server.login(user_email, PW)                    # Logs us in
 
-            for p in people:                                # loops through all people
+            for p in m.targets:                             # loops through all targets
                 if p.status.get():                          # if contacting this person
                     msg['To'] = p.email                     # sets target email
                     server.send_message(msg)                # sends message
-
 
         showinfo("Done!", "Broadcast complete!")
 
@@ -148,12 +150,7 @@ class Messenger(Frame):
         msg_entry = Entry(self.root, width=80, textvariable=self.msg)  # Creates entry box
         msg_entry.grid(column=2, row=0, columnspan=3)  # Adds entry box
 
-        sig_label = Label(self.root, text="Signature:")
-        sig_label.grid(column=1, row=1)
-        sig_entry = Entry(self.root, width=80, textvariable=self.sig)
-        sig_entry.grid(column=2, row=1, columnspan=3)
-
-        return [msg_label, msg_entry, sig_label, sig_entry]
+        return [msg_label, msg_entry]
 
     # Loads people from Excel
     def load(self, sheet):
@@ -198,6 +195,13 @@ class Messenger(Frame):
         self.text2.config(state="disabled")
         self.text2.grid(row=3, rowspan=50, column=4, sticky=W)
 
+    # Returns value of text in message entry box
+    def get_message_text(self):
+        return self.items[2][1].get()                            # Gets message from entry box
+
+    # Returns list of individuals who have been selected to receive the message
+    def get_targets(self):
+        return self.items[3][0] + self.items[3][1]
 
 def select_all(people):                  # Flips states of all given nodes
     for p in people:
